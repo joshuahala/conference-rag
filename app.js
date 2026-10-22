@@ -519,6 +519,10 @@ async function semanticSearch() {
 // RAG (ASK A QUESTION)
 // ============================================
 
+// Shared answer cache: reuse GPT answers when a new question is
+// close in embedding space to one someone already asked.
+const CACHE_SIMILARITY_THRESHOLD = 0.92;
+
 async function askQuestion() {
     const question = ragInput ? ragInput.value.trim() : '';
     if (!question || !supabaseClient) return;
@@ -527,56 +531,116 @@ async function askQuestion() {
     clearResults('rag');
 
     try {
-        // Step 1: Get embedding
         const embedding = await getEmbedding(question);
 
-        // Step 2: Search for similar sentences
+        const cached = await lookupCachedAnswer(embedding);
+        if (cached) {
+            showResults('rag', renderRagHtml(cached.answer, cached.sources, {
+                fromCache: true,
+                originalQuestion: cached.question,
+                cacheSimilarity: cached.similarity
+            }));
+            return;
+        }
+
         const results = await searchSentences(embedding);
-
-        // Step 3: Group by talk (with similarity scores and URLs)
         const topTalks = groupByTalk(results);
-
-        // Step 4: Fetch full talk text for richer context
         const enrichedTalks = await fetchFullTalkText(topTalks);
-
-        // Step 5: Generate answer with full context
         const answer = await generateAnswer(question, enrichedTalks);
 
-        // Compute overall similarity (weighted avg across source talks)
-        const overallSimilarity = topTalks.reduce((sum, t) => sum + t.avgSimilarity, 0) / topTalks.length;
-        const overallBadge = similarityBadge(overallSimilarity);
-        const simClass = overallSimilarity >= 0.70 ? 'similarity-high'
-            : overallSimilarity >= 0.40 ? 'similarity-mid' : 'similarity-low';
+        await saveCachedAnswer(question, embedding, answer, topTalks);
 
-        let html = `<div class="result-card rag-answer rag-${simClass}">
-            <div class="result-card-header">
-                <div class="result-title">AI Answer</div>
-                ${overallBadge}
-            </div>
-            <div class="result-sentences">${escapeHtml(answer)}</div>
-        </div>`;
-
-        // Show source talks with per-talk similarity badges and links
-        html += '<div class="result-sources"><strong>Sources:</strong></div>';
-        for (const talk of topTalks) {
-            const talkBadge = similarityBadge(talk.avgSimilarity);
-            html += `<div class="result-card result-source">
-                <div class="result-card-header">
-                    <div>
-                        <div class="result-title"><a href="${escapeHtml(talk.url)}" target="_blank" class="result-title-link">${escapeHtml(talk.title)}</a></div>
-                        <div class="result-speaker">by ${escapeHtml(talk.speaker)}</div>
-                    </div>
-                    ${talkBadge}
-                </div>
-            </div>`;
-        }
-        showResults('rag', html);
+        showResults('rag', renderRagHtml(answer, topTalks, { fromCache: false }));
 
     } catch (error) {
         showResults('rag', `<div class="result-error">Error: ${escapeHtml(error.message)}</div>`);
     } finally {
         showLoading(false);
     }
+}
+
+async function lookupCachedAnswer(embedding) {
+    try {
+        const { data, error } = await supabaseClient.rpc('match_cached_questions', {
+            query_embedding: embedding,
+            match_threshold: CACHE_SIMILARITY_THRESHOLD,
+            match_count: 1
+        });
+        if (error || !data || data.length === 0) return null;
+        const hit = data[0];
+        return {
+            question: hit.question,
+            answer: hit.answer,
+            sources: hit.sources || [],
+            similarity: hit.similarity
+        };
+    } catch (err) {
+        console.warn('Cache lookup skipped:', err.message);
+        return null;
+    }
+}
+
+async function saveCachedAnswer(question, embedding, answer, talks) {
+    if (!answer) return;
+    const sources = talks.map(t => ({
+        title: t.title,
+        speaker: t.speaker,
+        url: t.url,
+        avgSimilarity: t.avgSimilarity
+    }));
+    try {
+        const { error } = await supabaseClient.from('question_cache').insert({
+            question,
+            embedding,
+            answer,
+            sources
+        });
+        if (error) console.warn('Could not save answer to cache:', error.message);
+    } catch (err) {
+        console.warn('Could not save answer to cache:', err.message);
+    }
+}
+
+function renderRagHtml(answer, talks, meta) {
+    const sourceTalks = talks || [];
+    const overallSimilarity = sourceTalks.length
+        ? sourceTalks.reduce((sum, t) => sum + (t.avgSimilarity || 0), 0) / sourceTalks.length
+        : 0;
+    const overallBadge = similarityBadge(overallSimilarity);
+    const simClass = overallSimilarity >= 0.70 ? 'similarity-high'
+        : overallSimilarity >= 0.40 ? 'similarity-mid' : 'similarity-low';
+
+    const cacheBadge = meta.fromCache
+        ? `<span class="cache-badge">Cached · ${((meta.cacheSimilarity || 0) * 100).toFixed(0)}% match</span>`
+        : '';
+
+    const cacheNote = meta.fromCache
+        ? `<div class="cache-note">Reused a previous answer (original: “${escapeHtml(meta.originalQuestion || '')}”). GPT was not called.</div>`
+        : '';
+
+    let html = `<div class="result-card rag-answer rag-${simClass}">
+            <div class="result-card-header">
+                <div class="result-title">AI Answer ${cacheBadge}</div>
+                ${overallBadge}
+            </div>
+            ${cacheNote}
+            <div class="result-sentences">${escapeHtml(answer)}</div>
+        </div>`;
+
+    html += '<div class="result-sources"><strong>Sources:</strong></div>';
+    for (const talk of sourceTalks) {
+        const talkBadge = similarityBadge(talk.avgSimilarity || 0);
+        html += `<div class="result-card result-source">
+                <div class="result-card-header">
+                    <div>
+                        <div class="result-title"><a href="${escapeHtml(talk.url || '')}" target="_blank" class="result-title-link">${escapeHtml(talk.title || 'Unknown Talk')}</a></div>
+                        <div class="result-speaker">by ${escapeHtml(talk.speaker || 'Unknown Speaker')}</div>
+                    </div>
+                    ${talkBadge}
+                </div>
+            </div>`;
+    }
+    return html;
 }
 
 // ============================================

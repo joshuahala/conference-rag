@@ -625,6 +625,25 @@ input:focus {
     border: 1px solid var(--error);
 }
 
+.cache-badge {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    vertical-align: middle;
+    background: rgba(99, 102, 241, 0.18);
+    color: var(--secondary);
+    border: 1px solid var(--secondary);
+}
+
+.cache-note {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0 0 var(--spacing-sm);
+}
+
 .result-title {
     font-weight: 600;
     color: var(--primary);
