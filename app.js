@@ -521,7 +521,7 @@ async function semanticSearch() {
 
 // Shared answer cache: reuse GPT answers when a new question is
 // close in embedding space to one someone already asked.
-const CACHE_SIMILARITY_THRESHOLD = 0.92;
+const CACHE_SIMILARITY_THRESHOLD = 0.88;
 
 async function askQuestion() {
     const question = ragInput ? ragInput.value.trim() : '';

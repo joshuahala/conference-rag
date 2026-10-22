@@ -48,7 +48,7 @@ WITH CHECK (true);
 
 CREATE OR REPLACE FUNCTION match_cached_questions(
   query_embedding vector(1536),
-  match_threshold float DEFAULT 0.92,
+  match_threshold float DEFAULT 0.88,
   match_count int DEFAULT 1
 )
 RETURNS TABLE (
