@@ -102,6 +102,7 @@ TO anon, authenticated
 USING (true);
 
 -- Create function for similarity search
+DROP FUNCTION IF EXISTS match_sentences(vector, integer);
 CREATE OR REPLACE FUNCTION match_sentences(
   query_embedding vector(1536),
   match_count int DEFAULT 20
@@ -112,6 +113,7 @@ RETURNS TABLE (
   title text,
   speaker text,
   text text,
+  url text,
   similarity float
 )
 LANGUAGE sql STABLE
@@ -122,6 +124,7 @@ AS $$
     sentence_embeddings.title,
     sentence_embeddings.speaker,
     sentence_embeddings.text,
+    sentence_embeddings.url,
     1 - (sentence_embeddings.embedding <=> query_embedding) as similarity
   FROM sentence_embeddings
   ORDER BY sentence_embeddings.embedding <=> query_embedding

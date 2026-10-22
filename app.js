@@ -447,7 +447,7 @@ async function keywordSearch() {
         let html = '';
         for (const talk of Object.values(talks)) {
             html += `<div class="result-card">
-                <div class="result-title"><a href="${escapeHtml(talk.url)}" target="_blank" class="result-title-link">${escapeHtml(talk.title)}</a></div>
+                <div class="result-title">${talkTitleLink(talk.title, talk.url)}</div>
                 <div class="result-speaker">by ${escapeHtml(talk.speaker)}</div>
                 <div class="result-sentences">${talk.sentences.slice(0, 3).join('<br>')}</div>
             </div>`;
@@ -498,7 +498,7 @@ async function semanticSearch() {
             html += `<div class="result-card">
                 <div class="result-card-header">
                     <div>
-                        <div class="result-title"><a href="${escapeHtml(result.url)}" target="_blank" class="result-title-link">${escapeHtml(result.title)}</a></div>
+                        <div class="result-title">${talkTitleLink(result.title, result.url)}</div>
                         <div class="result-speaker">by ${escapeHtml(result.speaker)}</div>
                     </div>
                     ${badge}
@@ -633,7 +633,7 @@ function renderRagHtml(answer, talks, meta) {
         html += `<div class="result-card result-source">
                 <div class="result-card-header">
                     <div>
-                        <div class="result-title"><a href="${escapeHtml(talk.url || '')}" target="_blank" class="result-title-link">${escapeHtml(talk.title || 'Unknown Talk')}</a></div>
+                        <div class="result-title">${talkTitleLink(talk.title, talk.url)}</div>
                         <div class="result-speaker">by ${escapeHtml(talk.speaker || 'Unknown Speaker')}</div>
                     </div>
                     ${talkBadge}
@@ -778,6 +778,14 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function talkTitleLink(title, url) {
+    const safeTitle = escapeHtml(title || 'Unknown Talk');
+    if (!url || !/^https?:\/\//i.test(url)) {
+        return safeTitle;
+    }
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="result-title-link">${safeTitle}</a>`;
 }
 
 // Similarity badge with color coding
